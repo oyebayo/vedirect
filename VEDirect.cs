@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO.Ports;
 using System.Threading;
+using System.IO;
 
 namespace mpptReader
 {
@@ -20,7 +21,7 @@ namespace mpptReader
         private string value;
         private ReadState state;
         private Dictionary<string, string> dict;
-        private int bytes_sum;
+        private byte bytes_sum;
 
         private enum ReadState
         {
@@ -46,24 +47,22 @@ namespace mpptReader
             this.dict = new Dictionary<string, string>();
         }
 
-        public Dictionary<string, string> input(char byte1)
+        public Dictionary<string, string> input(byte byte1)
         {
-            if (byte1 == hexmarker && state != ReadState.IN_CHECKSUM)
-                state = ReadState.HEX;
+            var byte1_as_char = Convert.ToChar(byte1);
+            if (byte1_as_char == hexmarker && state != ReadState.IN_CHECKSUM) state = ReadState.HEX;
+            if (state != ReadState.HEX) bytes_sum += byte1;
 
             switch (state)
             {
                 case ReadState.WAIT_HEADER:
-                    bytes_sum += Convert.ToByte(byte1);
-                    if (byte1 == header1)
+                    if (byte1_as_char == header1)
                         state = ReadState.WAIT_HEADER;
-                    else if (byte1 == header2)
+                    else if (byte1_as_char == header2)
                         state = ReadState.IN_KEY;
-
                     break;
                 case ReadState.IN_KEY:
-                    bytes_sum += Convert.ToByte(byte1);
-                    if (byte1 == delimiter)
+                    if (byte1_as_char == delimiter)
                     {
                         if (key == "Checksum")
                             state = ReadState.IN_CHECKSUM;
@@ -72,13 +71,12 @@ namespace mpptReader
                     }
                     else
                     {
-                        key += byte1;
+                        key += byte1_as_char;
                     }
 
                     break;
                 case ReadState.IN_VALUE:
-                    bytes_sum += Convert.ToByte(byte1);
-                    if (byte1 == header1)
+                    if (byte1_as_char == header1)
                     {
                         state = ReadState.WAIT_HEADER;
                         if (dict.ContainsKey(key))
@@ -90,29 +88,24 @@ namespace mpptReader
                     }
                     else
                     {
-                        value += byte1;
+                        value += byte1_as_char;
                     }
                     break;
                 case ReadState.IN_CHECKSUM:
-                    bytes_sum += Convert.ToByte(byte1);
                     key = "";
                     value = "";
                     state = ReadState.WAIT_HEADER;
-                    if (bytes_sum % 256 == 0)
+                    if (bytes_sum == 0)
                     {
                         bytes_sum = 0;
                         return dict;
                     }
-                    else
-                    {
-                        Console.WriteLine("Malformed packet");
-                        bytes_sum = 0;
-                    }
+                    Console.WriteLine("Warning: bytes_sum = {0}", bytes_sum);
+                    bytes_sum = 0;
                     break;
                 case ReadState.HEX:
                     bytes_sum = 0;
-                    if (byte1 == header2)
-                        state = ReadState.WAIT_HEADER;
+                    if (byte1_as_char == header2) state = ReadState.WAIT_HEADER;
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(string.Format("Unknown readstate {0}", state));
@@ -125,7 +118,7 @@ namespace mpptReader
             ser.Open();
             while (true)
             {
-                char byte1 = (char)ser.ReadChar();
+                byte byte1 = (byte)ser.ReadByte();
                 var packet = input(byte1);
             }
         }
@@ -135,7 +128,7 @@ namespace mpptReader
             ser.Open();
             while (true)
             {
-                char byte1 = (char)ser.ReadChar();
+                byte byte1 = (byte)ser.ReadByte();
                 var packet = input(byte1);
                 if (packet != null)
                 {
@@ -150,12 +143,14 @@ namespace mpptReader
             ser.Open();
             while (true)
             {
-                Thread.Sleep(5);
-                var byte1 = (char)ser.ReadChar();
+                var byte1 = (byte)ser.ReadByte();
                 if (byte1 != 0)
                 {
                     var packet = input(byte1);
-                    if (packet != null) callbackFunction(packet);
+                    if (packet != null)
+                    {
+                        callbackFunction(packet);
+                    }
                 }
                 else
                 {
