@@ -152,11 +152,6 @@ namespace mpptReader
                         callbackFunction(packet);
                     }
                 }
-                else
-                {
-                    ser.Close();
-                    break;
-                }
             }
         }
         public void print_data_callback(Dictionary<string, string> data)
